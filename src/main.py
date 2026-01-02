@@ -16,6 +16,8 @@ HELI_ACCENT_COLOR = (30, 30, 35)
 ROTOR_COLOR = (20, 20, 20)
 CLOUD_COLOR = (255, 255, 255)
 BUILDING_COLOR = (100, 100, 130)
+WINDOW_LIT_COLOR = (240, 240, 190)
+WINDOW_DARK_COLOR = (65, 75, 95)
 TEXT_COLOR = (15, 25, 35)
 TREE_TRUNK_COLOR = (94, 64, 44)
 TREE_LEAF_COLOR = (50, 130, 70)
@@ -54,7 +56,14 @@ class Background:
         self.offset_x = 0.0  # world-to-screen transform: screen_x = world_x - offset_x
         # simple parallax layers: buildings (far), trees/stripes (near), clouds (farther)
         self.clouds = [(200, 80), (500, 110), (900, 70), (1200, 130), (1600, 90)]
-        self.buildings = [(300, 220, 80, 180), (700, 240, 100, 160), (1100, 230, 90, 170), (1400, 210, 120, 190), (1800, 225, 85, 175)]
+        # Buildings defined as (x, width, height); all rest on ground (GROUND_Y)
+        self.buildings = [
+            (300, 90, 210),
+            (620, 120, 180),
+            (960, 100, 200),
+            (1320, 140, 230),
+            (1680, 110, 190),
+        ]
         self.stripes = [i * 120 for i in range(0, 40)]
         # Procedural tree placement along the world; deterministic variety
         self.trees = []  # each item: (x, size)
@@ -75,9 +84,10 @@ class Background:
             sx = int(cx - self.offset_x * 0.5)
             self._draw_cloud(screen, sx, cy)
         # Buildings (far layer)
-        for bx, by, bw, bh in self.buildings:
+        for bx, bw, bh in self.buildings:
             sx = int(bx - self.offset_x * 0.8)
-            pygame.draw.rect(screen, BUILDING_COLOR, (sx, GROUND_Y - by, bw, bh))
+            # draw building grounded: top at GROUND_Y - height
+            self._draw_building(screen, sx, bw, bh)
         # Ground
         pygame.draw.rect(screen, GROUND_COLOR, (0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y))
         # Ground stripes (near layer: fastest parallax)
@@ -100,6 +110,37 @@ class Background:
         pygame.draw.circle(screen, CLOUD_COLOR, (x, y), 18)
         pygame.draw.circle(screen, CLOUD_COLOR, (x + 20, y + 5), 22)
         pygame.draw.circle(screen, CLOUD_COLOR, (x - 18, y + 8), 16)
+
+    def _draw_building(self, screen, x, w, h):
+        # main block
+        top_y = GROUND_Y - h
+        rect = pygame.Rect(x, top_y, w, h)
+        pygame.draw.rect(screen, BUILDING_COLOR, rect)
+        # simple roofline
+        pygame.draw.rect(screen, (85, 85, 110), (x, top_y - 4, w, 4))
+        # windows grid inside with padding
+        pad_x, pad_y = 8, 12
+        win_w, win_h = 12, 14
+        gap_x, gap_y = 6, 6
+        usable_w = w - 2 * pad_x
+        usable_h = h - pad_y - 22  # leave a little footer area
+        if usable_w <= 0 or usable_h <= 0:
+            return
+        # compute number of columns/rows that fit
+        cols = max(1, (usable_w + gap_x) // (win_w + gap_x))
+        rows = max(1, (usable_h + gap_y) // (win_h + gap_y))
+        # center the grid horizontally
+        grid_w = cols * win_w + (cols - 1) * gap_x
+        start_x = x + pad_x + max(0, (usable_w - grid_w) // 2)
+        start_y = top_y + pad_y
+        for r in range(int(rows)):
+            for c in range(int(cols)):
+                wx = start_x + c * (win_w + gap_x)
+                wy = start_y + r * (win_h + gap_y)
+                # alternating lit/unlit pattern for visual interest
+                lit = ((r + c) % 2 == 0)
+                color = WINDOW_LIT_COLOR if lit else WINDOW_DARK_COLOR
+                pygame.draw.rect(screen, color, (wx, wy, win_w, win_h), border_radius=2)
 
     def _draw_tree(self, screen, x, base_y, size):
         # trunk
