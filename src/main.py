@@ -411,20 +411,14 @@ class Simulation:
     def draw(self):
         self.bg.draw(self.screen)
         self.heli.draw(self.screen)
-        # HUD text
+        # Status-only HUD
         self._draw_hud()
         pygame.display.flip()
 
     def _draw_hud(self):
-        labels = [
-            f"State: {self._state_name(self.state)}",
-            f"Rotor speed (rad/s): {self.heli.rotor_speed:.2f}",
-            f"dt (ms): {self.clock.get_time()} | FPS target: {FPS}",
-            "Motion illusion: background scroll (helicopter fixed X)",
-        ]
-        for i, text in enumerate(labels):
-            surf = self.font.render(text, True, TEXT_COLOR)
-            self.screen.blit(surf, (12, 10 + i * 18))
+        text = f"State: {self._state_name(self.state)}"
+        surf = self.font.render(text, True, TEXT_COLOR)
+        self.screen.blit(surf, (12, 10))
 
     def _state_name(self, s):
         return {
