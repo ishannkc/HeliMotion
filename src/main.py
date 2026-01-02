@@ -178,14 +178,8 @@ class Helicopter:
         self.rotor_angle = 0.0
         self.rotor_speed = 0.0  # rad/s
         # geometry
-        self.body_w = 160
         self.body_h = 42
-        self.tail_w = 120
-        self.tail_h = 10
-        self.skid_w = 150
-        self.skid_h = 6
         self.rotor_len = 100
-        self.rotor_post_h = 24
 
     def update_rotor(self, dt, target_speed=None, decel=False):
         if target_speed is not None and not decel:
@@ -277,7 +271,6 @@ class Helicopter:
         # === COCKPIT WINDOWS (light cyan like in image) ===
         win_top = cy - 12
         win_bot = cy + 14
-        win_height = win_bot - win_top
         
         # Three rectangular windows with slight slant
         # Window 1 (leftmost)
