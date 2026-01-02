@@ -13,4 +13,12 @@ This mini-project implements a simple state-based 2D animation in Python using P
    python src/main.py
    ```
 
+### Windows quick run
+
+- Double-click [run.bat](run.bat), or from PowerShell:
+  ```powershell
+  .\run.bat
+  ```
+  This uses the project venv at .venv automatically, falling back to `python` in PATH.
+
 Tested on Windows with Python 3.9+.
