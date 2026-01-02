@@ -182,7 +182,7 @@ class Helicopter:
 class Simulation:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("Helicopter 2D Animation - CG Mini Project")
+        pygame.display.set_caption("HeliMotion")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 16)
