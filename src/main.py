@@ -17,6 +17,8 @@ ROTOR_COLOR = (20, 20, 20)
 CLOUD_COLOR = (255, 255, 255)
 BUILDING_COLOR = (100, 100, 130)
 TEXT_COLOR = (15, 25, 35)
+TREE_TRUNK_COLOR = (94, 64, 44)
+TREE_LEAF_COLOR = (50, 130, 70)
 GROUND_Y = HEIGHT - 120
 
 # World layout for illusion of horizontal movement (background scroll)
@@ -54,6 +56,12 @@ class Background:
         self.clouds = [(200, 80), (500, 110), (900, 70), (1200, 130), (1600, 90)]
         self.buildings = [(300, 220, 80, 180), (700, 240, 100, 160), (1100, 230, 90, 170), (1400, 210, 120, 190), (1800, 225, 85, 175)]
         self.stripes = [i * 120 for i in range(0, 40)]
+        # Procedural tree placement along the world; deterministic variety
+        self.trees = []  # each item: (x, size)
+        for i in range(0, 38):
+            tx = 140 + i * 160 + int(40 * math.sin(i * 0.8))
+            size = 52 + (i % 5) * 10  # varied foliage size
+            self.trees.append((tx, size))
 
     def update_scroll(self, dt, active: bool):
         if active:
@@ -76,6 +84,12 @@ class Background:
         for x in self.stripes:
             sx = int(x - self.offset_x)
             pygame.draw.rect(screen, (70, 140, 70), (sx, GROUND_Y + 20, 40, 10))
+        # Trees (near layer): draw after ground so they sit on it
+        for tx, size in self.trees:
+            sx = int(tx - self.offset_x)
+            # small cull to avoid overdraw off-screen
+            if -80 < sx < WIDTH + 80:
+                self._draw_tree(screen, sx, GROUND_Y, size)
         # Pads
         pad_a_screen_x = int(PAD_A_X - self.offset_x)
         pad_b_screen_x = int(PAD_B_X - self.offset_x)
@@ -86,6 +100,19 @@ class Background:
         pygame.draw.circle(screen, CLOUD_COLOR, (x, y), 18)
         pygame.draw.circle(screen, CLOUD_COLOR, (x + 20, y + 5), 22)
         pygame.draw.circle(screen, CLOUD_COLOR, (x - 18, y + 8), 16)
+
+    def _draw_tree(self, screen, x, base_y, size):
+        # trunk
+        trunk_w = max(8, size // 6)
+        trunk_h = max(28, size // 2)
+        pygame.draw.rect(screen, TREE_TRUNK_COLOR, (x - trunk_w // 2, base_y - trunk_h, trunk_w, trunk_h))
+        # foliage (clustered circles)
+        crown_y = base_y - trunk_h - 4
+        r1 = max(14, size // 3)
+        r2 = max(12, size // 4)
+        pygame.draw.circle(screen, TREE_LEAF_COLOR, (x, crown_y), r1)
+        pygame.draw.circle(screen, TREE_LEAF_COLOR, (x - r1 + 6, crown_y + 6), r2 + 4)
+        pygame.draw.circle(screen, TREE_LEAF_COLOR, (x + r1 - 6, crown_y + 8), r2 + 2)
 
     def pad_b_alignment(self, heli_screen_x: int) -> bool:
         """
