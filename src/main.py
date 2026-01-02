@@ -11,9 +11,11 @@ SKY_COLOR = (135, 206, 235)
 GROUND_COLOR = (60, 120, 60)
 PAD_A_COLOR = (200, 200, 60)
 PAD_B_COLOR = (200, 100, 50)
-HELI_BODY_COLOR = (80, 80, 90)
-HELI_ACCENT_COLOR = (30, 30, 35)
-ROTOR_COLOR = (20, 20, 20)
+HELI_BODY_COLOR = (220, 40, 45)  # red fuselage
+HELI_WINDOW_COLOR = (180, 220, 230)  # light cyan windows
+HELI_OUTLINE_COLOR = (50, 50, 50)  # dark outline
+ROTOR_COLOR = (90, 90, 95)  # gray rotors
+SKID_COLOR = (70, 75, 80)  # gray landing skids
 CLOUD_COLOR = (255, 255, 255)
 BUILDING_COLOR = (100, 100, 130)
 WINDOW_LIT_COLOR = (240, 240, 190)
@@ -176,14 +178,14 @@ class Helicopter:
         self.rotor_angle = 0.0
         self.rotor_speed = 0.0  # rad/s
         # geometry
-        self.body_w = 140
-        self.body_h = 36
-        self.tail_w = 90
-        self.tail_h = 12
-        self.skid_w = 120
+        self.body_w = 160
+        self.body_h = 42
+        self.tail_w = 120
+        self.tail_h = 10
+        self.skid_w = 150
         self.skid_h = 6
-        self.rotor_len = 70
-        self.rotor_post_h = 18
+        self.rotor_len = 100
+        self.rotor_post_h = 24
 
     def update_rotor(self, dt, target_speed=None, decel=False):
         if target_speed is not None and not decel:
@@ -209,39 +211,134 @@ class Helicopter:
         return abs(self.y - (self.ground_y - 220)) < 1.0
 
     def draw(self, screen):
-        # body center
+        # center reference for fuselage
         cx, cy = int(self.x), int(self.y - self.body_h // 2)
-        # fuselage
-        body_rect = pygame.Rect(cx - self.body_w // 2, cy - self.body_h // 2, self.body_w, self.body_h)
-        pygame.draw.rect(screen, HELI_BODY_COLOR, body_rect, border_radius=6)
-        # cockpit accent
-        pygame.draw.rect(screen, HELI_ACCENT_COLOR, (body_rect.x + 8, body_rect.y + 6, 40, self.body_h - 12), border_radius=4)
-        # tail boom
-        tail_rect = pygame.Rect(body_rect.right - 12, cy - self.tail_h // 2, self.tail_w, self.tail_h)
-        pygame.draw.rect(screen, HELI_BODY_COLOR, tail_rect)
-        # skids
-        skid_y = self.y + 12
-        pygame.draw.rect(screen, HELI_BODY_COLOR, (cx - self.skid_w // 2, skid_y, self.skid_w, self.skid_h), border_radius=3)
-        pygame.draw.line(screen, HELI_BODY_COLOR, (cx - 40, skid_y), (cx - 40, cy + 14), 3)
-        pygame.draw.line(screen, HELI_BODY_COLOR, (cx + 40, skid_y), (cx + 40, cy + 14), 3)
-        # main rotor: hub above body
-        hub_x, hub_y = cx, cy - self.body_h // 2 - self.rotor_post_h
-        pygame.draw.line(screen, HELI_BODY_COLOR, (hub_x, cy - self.body_h // 2), (hub_x, hub_y), 4)
-        # two opposite blades using rotation
+
+        # === MAIN ROTOR (draw first so it appears behind body) ===
+        hub_x = cx + 10
+        hub_y = cy - 38
+        # Rotor mast/post
+        pygame.draw.line(screen, HELI_OUTLINE_COLOR, (hub_x, cy - 18), (hub_x, hub_y), 4)
+        # Rotating main rotor blades (long horizontal bar)
         bx1 = hub_x + int(math.cos(self.rotor_angle) * self.rotor_len)
-        by1 = hub_y + int(math.sin(self.rotor_angle) * self.rotor_len)
+        by1 = hub_y + int(math.sin(self.rotor_angle) * 8)  # flatten for top-down look
         bx2 = hub_x + int(math.cos(self.rotor_angle + math.pi) * self.rotor_len)
-        by2 = hub_y + int(math.sin(self.rotor_angle + math.pi) * self.rotor_len)
-        pygame.draw.line(screen, ROTOR_COLOR, (hub_x, hub_y), (bx1, by1), 5)
-        pygame.draw.line(screen, ROTOR_COLOR, (hub_x, hub_y), (bx2, by2), 5)
-        # tiny tail rotor imitation (simple rotating line)
-        tail_center = (tail_rect.right - 6, tail_rect.y + tail_rect.h // 2)
-        rx1 = tail_center[0] + int(math.cos(self.rotor_angle * 2) * 10)
-        ry1 = tail_center[1] + int(math.sin(self.rotor_angle * 2) * 10)
-        rx2 = tail_center[0] + int(math.cos(self.rotor_angle * 2 + math.pi) * 10)
-        ry2 = tail_center[1] + int(math.sin(self.rotor_angle * 2 + math.pi) * 10)
-        pygame.draw.line(screen, ROTOR_COLOR, tail_center, (rx1, ry1), 3)
-        pygame.draw.line(screen, ROTOR_COLOR, tail_center, (rx2, ry2), 3)
+        by2 = hub_y + int(math.sin(self.rotor_angle + math.pi) * 8)
+        pygame.draw.line(screen, ROTOR_COLOR, (bx1, by1), (bx2, by2), 6)
+        # Hub circle
+        pygame.draw.circle(screen, ROTOR_COLOR, (hub_x, hub_y), 5)
+
+        # === TAIL SECTION ===
+        # Tail boom (tapers towards the back)
+        tail_points = [
+            (cx - 40, cy - 8),    # start at body
+            (cx - 120, cy - 4),   # top of tail end
+            (cx - 120, cy + 6),   # bottom of tail end  
+            (cx - 40, cy + 12),   # back to body
+        ]
+        pygame.draw.polygon(screen, HELI_BODY_COLOR, tail_points)
+        pygame.draw.polygon(screen, HELI_OUTLINE_COLOR, tail_points, 2)
+
+        # Tail fin (vertical stabilizer)
+        tail_fin = [
+            (cx - 115, cy - 4),
+            (cx - 130, cy - 20),
+            (cx - 140, cy - 20),
+            (cx - 125, cy + 2),
+        ]
+        pygame.draw.polygon(screen, HELI_BODY_COLOR, tail_fin)
+        pygame.draw.polygon(screen, HELI_OUTLINE_COLOR, tail_fin, 2)
+
+        # Tail rotor (small rotating blade on tail)
+        tail_rotor_x = cx - 138
+        tail_rotor_y = cy - 12
+        tr_angle = self.rotor_angle * 3.0
+        tr_len = 14
+        trx1 = tail_rotor_x
+        try1 = tail_rotor_y + int(math.sin(tr_angle) * tr_len)
+        trx2 = tail_rotor_x
+        try2 = tail_rotor_y + int(math.sin(tr_angle + math.pi) * tr_len)
+        pygame.draw.line(screen, ROTOR_COLOR, (trx1, try1), (trx2, try2), 4)
+
+        # === MAIN BODY (fuselage) ===
+        # Rounded rectangular body shape like in the image
+        body_points = [
+            (cx - 40, cy - 18),   # top left
+            (cx + 50, cy - 18),   # top right before nose
+            (cx + 75, cy - 10),   # nose top curve
+            (cx + 85, cy + 2),    # nose tip
+            (cx + 75, cy + 14),   # nose bottom curve
+            (cx + 50, cy + 22),   # bottom right
+            (cx - 40, cy + 22),   # bottom left
+        ]
+        pygame.draw.polygon(screen, HELI_BODY_COLOR, body_points)
+        pygame.draw.polygon(screen, HELI_OUTLINE_COLOR, body_points, 2)
+
+        # === COCKPIT WINDOWS (light cyan like in image) ===
+        win_top = cy - 12
+        win_bot = cy + 14
+        win_height = win_bot - win_top
+        
+        # Three rectangular windows with slight slant
+        # Window 1 (leftmost)
+        w1 = [
+            (cx - 25, win_top),
+            (cx - 8, win_top),
+            (cx - 10, win_bot),
+            (cx - 27, win_bot),
+        ]
+        pygame.draw.polygon(screen, HELI_WINDOW_COLOR, w1)
+        pygame.draw.polygon(screen, HELI_OUTLINE_COLOR, w1, 2)
+        
+        # Window 2 (middle)
+        w2 = [
+            (cx - 3, win_top),
+            (cx + 16, win_top),
+            (cx + 14, win_bot),
+            (cx - 5, win_bot),
+        ]
+        pygame.draw.polygon(screen, HELI_WINDOW_COLOR, w2)
+        pygame.draw.polygon(screen, HELI_OUTLINE_COLOR, w2, 2)
+        
+        # Window 3 (front, more slanted)
+        w3 = [
+            (cx + 21, win_top),
+            (cx + 42, win_top + 4),
+            (cx + 38, win_bot - 2),
+            (cx + 19, win_bot),
+        ]
+        pygame.draw.polygon(screen, HELI_WINDOW_COLOR, w3)
+        pygame.draw.polygon(screen, HELI_OUTLINE_COLOR, w3, 2)
+
+        # === LANDING SKIDS (gray like in image) ===
+        skid_y = cy + 38
+        
+        # Left skid (long horizontal bar with curved front)
+        skid_left = cx - 60
+        skid_right = cx + 70
+        # Main skid bar
+        pygame.draw.line(screen, SKID_COLOR, (skid_left, skid_y), (skid_right - 15, skid_y), 5)
+        # Front curve up
+        skid_curve = [
+            (skid_right - 15, skid_y),
+            (skid_right - 5, skid_y - 4),
+            (skid_right, skid_y - 10),
+        ]
+        pygame.draw.lines(screen, SKID_COLOR, False, skid_curve, 5)
+        
+        # Rear curve up (slight)
+        rear_curve = [
+            (skid_left, skid_y),
+            (skid_left - 8, skid_y - 6),
+        ]
+        pygame.draw.lines(screen, SKID_COLOR, False, rear_curve, 5)
+        
+        # Struts connecting body to skids
+        strut_top = cy + 22
+        # Front strut
+        pygame.draw.line(screen, SKID_COLOR, (cx + 30, strut_top), (cx + 35, skid_y), 4)
+        # Rear strut  
+        pygame.draw.line(screen, SKID_COLOR, (cx - 25, strut_top), (cx - 30, skid_y), 4)
 
 
 # -----------------------------
