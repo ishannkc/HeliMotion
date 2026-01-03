@@ -73,6 +73,14 @@ class Background:
             tx = 140 + i * 160 + int(40 * math.sin(i * 0.8))
             size = 52 + (i % 5) * 10  # varied foliage size
             self.trees.append((tx, size))
+        # Grass patches for more realistic ground
+        self.grass_patches = []  # each item: (x, y_offset, blade_heights)
+        for i in range(0, 200):
+            gx = i * 30 + int(15 * math.sin(i * 1.3))
+            gy_offset = 5 + (i % 4) * 8  # varied y position on ground
+            # Generate varied blade heights for each patch
+            blade_heights = [8 + (j * 3 + i) % 12 for j in range(5)]
+            self.grass_patches.append((gx, gy_offset, blade_heights))
 
     def update_scroll(self, dt, active: bool):
         if active:
@@ -92,6 +100,11 @@ class Background:
             self._draw_building(screen, sx, bw, bh)
         # Ground
         pygame.draw.rect(screen, GROUND_COLOR, (0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y))
+        # Grass patches (draw on ground for realistic texture)
+        for gx, gy_offset, blade_heights in self.grass_patches:
+            sx = int(gx - self.offset_x)
+            if -20 < sx < WIDTH + 20:
+                self._draw_grass_patch(screen, sx, GROUND_Y + gy_offset, blade_heights)
         # Ground stripes (near layer: fastest parallax)
         for x in self.stripes:
             sx = int(x - self.offset_x)
@@ -156,6 +169,29 @@ class Background:
         pygame.draw.circle(screen, TREE_LEAF_COLOR, (x, crown_y), r1)
         pygame.draw.circle(screen, TREE_LEAF_COLOR, (x - r1 + 6, crown_y + 6), r2 + 4)
         pygame.draw.circle(screen, TREE_LEAF_COLOR, (x + r1 - 6, crown_y + 8), r2 + 2)
+
+    def _draw_grass_patch(self, screen, x, y, blade_heights):
+        # Draw individual grass blades as small lines/triangles
+        grass_colors = [
+            (45, 110, 55),   # darker green
+            (55, 130, 60),   # medium green
+            (65, 145, 70),   # lighter green
+            (50, 120, 55),   # another shade
+            (40, 100, 50),   # dark accent
+        ]
+        blade_spacing = 4
+        for i, height in enumerate(blade_heights):
+            bx = x + i * blade_spacing - 8
+            # Draw grass blade as a thin triangle
+            color = grass_colors[i % len(grass_colors)]
+            # Slight sway variation based on position
+            sway = int(2 * math.sin(x * 0.1 + i))
+            points = [
+                (bx, y),                          # base left
+                (bx + 2, y),                      # base right
+                (bx + 1 + sway, y - height),     # tip
+            ]
+            pygame.draw.polygon(screen, color, points)
 
     def pad_b_alignment(self, heli_screen_x: int) -> bool:
         """
