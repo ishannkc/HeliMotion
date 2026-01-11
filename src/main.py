@@ -30,24 +30,26 @@ PAD_A_X = 50
 PAD_B_X = 1500  # Point B far to the right in world coordinates
 
 # Motion tuning (time-based)
-MAX_ROTOR_SPEED = 6.0  # rad/s (main rotor)
-SPIN_ACCEL = 3.0       # rad/s^2 (spin up)
-SPIN_DECEL = 2.0       # rad/s^2 (spin down)
-TAKEOFF_VS = 150.0     # px/s vertical speed (up)
-LANDING_VS = 140.0     # px/s vertical speed (down)
+MAX_ROTOR_SPEED = 18.0  # rad/s (main rotor) - faster for visual effect
+SPIN_ACCEL = 8.0        # rad/s^2 (spin up) - responsive acceleration
+SPIN_DECEL = 4.0        # rad/s^2 (spin down) - gradual deceleration
+TAKEOFF_VS = 150.0      # px/s vertical speed (up)
+LANDING_VS = 100.0      # px/s vertical speed (down) - slower for smooth landing
 FLIGHT_SCROLL_SPEED = 180.0  # px/s background scroll to simulate forward motion
+MANUAL_HORI_SPEED = 220.0    # px/s horizontal speed for keyboard control
+MANUAL_VERT_SPEED = 150.0    # px/s vertical speed for keyboard control
+GRAVITY = 80.0               # px/s gravity pull when not pressing W
+MIN_FLIGHT_ROTOR_SPEED = 12.0  # minimum rotor speed needed for lift
 
 # -----------------------------
 # State Machine
 # -----------------------------
 class FlightState:
-    GROUND_IDLE = 0
-    SPIN_UP = 1
-    TAKE_OFF = 2
-    FLY = 3
-    LANDING = 4
-    SPIN_DOWN = 5
-    DONE = 6
+    IDLE = 0           # On ground, rotors stopped
+    SPINNING_UP = 1    # W pressed, rotors accelerating
+    FLYING = 2         # Airborne with controls
+    LANDING = 3        # S pressed, descending
+    SPIN_DOWN = 4      # Landed, rotors decelerating
 
 
 # -----------------------------
@@ -82,9 +84,12 @@ class Background:
             blade_heights = [8 + (j * 3 + i) % 12 for j in range(5)]
             self.grass_patches.append((gx, gy_offset, blade_heights))
 
-    def update_scroll(self, dt, active: bool):
-        if active:
-            self.offset_x += FLIGHT_SCROLL_SPEED * dt
+    def update_scroll(self, dt, direction=0):
+        """Update background scroll based on movement direction (-1=left, 0=none, 1=right)"""
+        if direction != 0:
+            self.offset_x += direction * FLIGHT_SCROLL_SPEED * dt
+            # Clamp offset to reasonable bounds
+            self.offset_x = max(-200, min(2000, self.offset_x))
 
     def draw(self, screen):
         # Sky
@@ -207,38 +212,83 @@ class Background:
 # -----------------------------
 class Helicopter:
     def __init__(self, x, ground_y):
-        self.x = x
-        self.y = ground_y  # starts on ground
+        self.x = float(x)
+        self.y = float(ground_y)  # starts on ground
         self.ground_y = ground_y
         # rotor dynamics
         self.rotor_angle = 0.0
         self.rotor_speed = 0.0  # rad/s
+        # velocity for smooth physics
+        self.vel_y = 0.0
         # geometry
         self.body_h = 42
         self.rotor_len = 100
 
-    def update_rotor(self, dt, target_speed=None, decel=False):
-        if target_speed is not None and not decel:
-            # spin up capped at MAX_ROTOR_SPEED
+    def update_rotor(self, dt, spinning_up=False):
+        """Update rotor speed based on input state"""
+        if spinning_up:
+            # Accelerate rotor towards max speed
             self.rotor_speed = min(MAX_ROTOR_SPEED, self.rotor_speed + SPIN_ACCEL * dt)
-            # clamp to target
-            self.rotor_speed = min(self.rotor_speed, target_speed)
-        elif decel:
-            # spin down to zero
+        else:
+            # Decelerate rotor towards zero
             self.rotor_speed = max(0.0, self.rotor_speed - SPIN_DECEL * dt)
+        
+        # Update rotor visual angle
         self.rotor_angle = (self.rotor_angle + self.rotor_speed * dt) % (2 * math.pi)
 
-    def move_vertical(self, dt, up=True):
-        if up:
-            self.y = max(self.ground_y - 220, self.y - TAKEOFF_VS * dt)
+    def can_fly(self):
+        """Check if rotor speed is sufficient for flight"""
+        return self.rotor_speed >= MIN_FLIGHT_ROTOR_SPEED
+
+    def apply_lift(self, dt):
+        """Apply upward force when W is held and rotor is fast enough"""
+        if self.can_fly():
+            self.vel_y = -MANUAL_VERT_SPEED
         else:
-            self.y = min(self.ground_y, self.y + LANDING_VS * dt)
+            # Rotor not fast enough, reduced lift
+            lift_factor = self.rotor_speed / MIN_FLIGHT_ROTOR_SPEED
+            self.vel_y = -MANUAL_VERT_SPEED * lift_factor * 0.3
+
+    def apply_gravity(self, dt):
+        """Apply gravity when not pressing W"""
+        if not self.on_ground():
+            # Rotor provides some resistance to falling based on speed
+            rotor_lift = (self.rotor_speed / MAX_ROTOR_SPEED) * GRAVITY * 0.8
+            effective_gravity = GRAVITY - rotor_lift
+            self.vel_y = min(LANDING_VS, self.vel_y + effective_gravity * dt)
+        else:
+            self.vel_y = 0.0
+
+    def update_position(self, dt):
+        """Update vertical position based on velocity"""
+        self.y += self.vel_y * dt
+        # Clamp to boundaries
+        min_altitude = self.ground_y - 350  # Max height
+        self.y = max(min_altitude, min(self.ground_y, self.y))
+        # Stop at ground
+        if self.y >= self.ground_y:
+            self.y = self.ground_y
+            self.vel_y = 0.0
+
+    def move_horizontal(self, dt, direction):
+        """Move left (-1) or right (+1)"""
+        self.x += direction * MANUAL_HORI_SPEED * dt
+        # Clamp to screen boundaries with padding
+        self.x = max(100, min(WIDTH - 100, self.x))
+
+    def descend_landing(self, dt):
+        """Controlled descent for landing"""
+        self.vel_y = LANDING_VS
+        self.y += self.vel_y * dt
+        if self.y >= self.ground_y:
+            self.y = self.ground_y
+            self.vel_y = 0.0
 
     def on_ground(self):
-        return abs(self.y - self.ground_y) < 0.5
+        return self.y >= self.ground_y - 1.0
 
     def at_altitude(self):
-        return abs(self.y - (self.ground_y - 220)) < 1.0
+        return self.y <= self.ground_y - 50  # At least 50px off ground
 
     def draw(self, screen):
         # center reference for fuselage
@@ -376,99 +426,227 @@ class Helicopter:
 class Simulation:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("HeliMotion")
+        pygame.display.set_caption("HeliMotion - Keyboard Controls")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 16)
+        self.font_large = pygame.font.SysFont("consolas", 20, bold=True)
         # actors
         self.bg = Background()
         self.heli = Helicopter(x=int(WIDTH * 0.35), ground_y=GROUND_Y - 10)
         # state
-        self.state = FlightState.GROUND_IDLE
+        self.state = FlightState.IDLE
         self.time_in_state = 0.0
 
     def change_state(self, new_state):
         self.state = new_state
         self.time_in_state = 0.0
 
+    def handle_input(self):
+        """Get current keyboard state using pygame's efficient key polling"""
+        keys = pygame.key.get_pressed()
+        return {
+            'w': keys[pygame.K_w],
+            'a': keys[pygame.K_a],
+            's': keys[pygame.K_s],
+            'd': keys[pygame.K_d],
+        }
+
     def update(self, dt):
         self.time_in_state += dt
-        # state machine logic
-        if self.state == FlightState.GROUND_IDLE:
-            self.heli.update_rotor(dt, target_speed=0.0)
-            # brief pause before spinning up
-            if self.time_in_state > 0.6:
-                self.change_state(FlightState.SPIN_UP)
-
-        elif self.state == FlightState.SPIN_UP:
-            self.heli.update_rotor(dt, target_speed=MAX_ROTOR_SPEED)
-            if self.heli.rotor_speed >= MAX_ROTOR_SPEED * 0.98:
-                self.change_state(FlightState.TAKE_OFF)
-
-        elif self.state == FlightState.TAKE_OFF:
-            self.heli.update_rotor(dt, target_speed=MAX_ROTOR_SPEED)
-            self.heli.move_vertical(dt, up=True)
-            if self.heli.at_altitude():
-                self.change_state(FlightState.FLY)
-
-        elif self.state == FlightState.FLY:
-            # keep rotor at max speed while flying
-            self.heli.update_rotor(dt, target_speed=MAX_ROTOR_SPEED)
-            # scroll background to simulate horizontal motion
-            self.bg.update_scroll(dt, active=True)
-            # once pad B is aligned beneath helicopter, start landing
-            if self.bg.pad_b_alignment(self.heli.x):
+        
+        # Get current input state
+        inputs = self.handle_input()
+        w_held = inputs['w']
+        a_held = inputs['a']
+        s_held = inputs['s']
+        d_held = inputs['d']
+        
+        # State machine logic
+        if self.state == FlightState.IDLE:
+            # On ground, waiting for input
+            self.heli.update_rotor(dt, spinning_up=False)
+            
+            # W key starts spinning up rotors
+            if w_held:
+                self.change_state(FlightState.SPINNING_UP)
+        
+        elif self.state == FlightState.SPINNING_UP:
+            # W is held, rotors are spinning up
+            if w_held:
+                self.heli.update_rotor(dt, spinning_up=True)
+                
+                # Once rotor is fast enough and W is still held, apply lift
+                if self.heli.can_fly():
+                    self.heli.apply_lift(dt)
+                    self.heli.update_position(dt)
+                    
+                    # Transition to flying once airborne
+                    if self.heli.at_altitude():
+                        self.change_state(FlightState.FLYING)
+                elif self.heli.rotor_speed > MIN_FLIGHT_ROTOR_SPEED * 0.5:
+                    # Partial lift as rotors spin up
+                    self.heli.apply_lift(dt)
+                    self.heli.update_position(dt)
+            else:
+                # W released - start spinning down
+                self.heli.update_rotor(dt, spinning_up=False)
+                self.heli.apply_gravity(dt)
+                self.heli.update_position(dt)
+                
+                # Return to idle if on ground and rotors stopped
+                if self.heli.on_ground() and self.heli.rotor_speed < 0.5:
+                    self.change_state(FlightState.IDLE)
+        
+        elif self.state == FlightState.FLYING:
+            # Full flight control mode
+            
+            # S key initiates landing
+            if s_held:
                 self.change_state(FlightState.LANDING)
-
-        elif self.state == FlightState.LANDING:
-            # stop horizontal scroll; descend
-            self.heli.update_rotor(dt, target_speed=MAX_ROTOR_SPEED)
-            self.bg.update_scroll(dt, active=False)
-            self.heli.move_vertical(dt, up=False)
+                return
+            
+            # W key for lift / altitude
+            if w_held:
+                self.heli.update_rotor(dt, spinning_up=True)
+                self.heli.apply_lift(dt)
+            else:
+                # Maintain rotor speed but apply gravity
+                self.heli.update_rotor(dt, spinning_up=True)  # Keep rotors spinning in flight
+                self.heli.apply_gravity(dt)
+            
+            # A/D for horizontal movement with background parallax
+            if a_held and not d_held:
+                self.bg.update_scroll(dt, direction=-1)  # Scroll background right (moving left)
+            elif d_held and not a_held:
+                self.bg.update_scroll(dt, direction=1)   # Scroll background left (moving right)
+            
+            # Update position
+            self.heli.update_position(dt)
+            
+            # Check if helicopter touched ground (emergency landing)
             if self.heli.on_ground():
                 self.change_state(FlightState.SPIN_DOWN)
-
+        
+        elif self.state == FlightState.LANDING:
+            # Controlled descent
+            self.heli.update_rotor(dt, spinning_up=True)  # Keep rotors at speed
+            self.heli.descend_landing(dt)
+            
+            # A/D still work during landing for positioning
+            if a_held and not d_held:
+                self.bg.update_scroll(dt, direction=-1)
+            elif d_held and not a_held:
+                self.bg.update_scroll(dt, direction=1)
+            
+            # Cancel landing with W
+            if w_held and not self.heli.on_ground():
+                self.change_state(FlightState.FLYING)
+                return
+            
+            # Landed successfully
+            if self.heli.on_ground():
+                self.change_state(FlightState.SPIN_DOWN)
+        
         elif self.state == FlightState.SPIN_DOWN:
-            self.heli.update_rotor(dt, decel=True)
-            if self.heli.rotor_speed <= 0.02:
-                self.change_state(FlightState.DONE)
-
-        elif self.state == FlightState.DONE:
-            # stay idle with rotor stopped
-            self.heli.update_rotor(dt, target_speed=0.0)
+            # On ground, rotors spinning down
+            self.heli.update_rotor(dt, spinning_up=False)
+            
+            # Can restart by pressing W
+            if w_held:
+                self.change_state(FlightState.SPINNING_UP)
+                return
+            
+            # Fully stopped
+            if self.heli.rotor_speed < 0.1:
+                self.change_state(FlightState.IDLE)
 
     def draw(self):
         self.bg.draw(self.screen)
         self.heli.draw(self.screen)
-        # Status-only HUD
         self._draw_hud()
         pygame.display.flip()
 
     def _draw_hud(self):
-        text = f"State: {self._state_name(self.state)}"
-        surf = self.font.render(text, True, TEXT_COLOR)
-        self.screen.blit(surf, (12, 10))
+        # State display
+        state_text = f"State: {self._state_name(self.state)}"
+        state_surf = self.font.render(state_text, True, TEXT_COLOR)
+        self.screen.blit(state_surf, (12, 10))
+        
+        # Rotor speed indicator with proper spacing
+        rotor_pct = int((self.heli.rotor_speed / MAX_ROTOR_SPEED) * 100)
+        rotor_text = f"Rotor:"
+        rotor_surf = self.font.render(rotor_text, True, TEXT_COLOR)
+        self.screen.blit(rotor_surf, (12, 30))
+        
+        # Rotor power bar (positioned after label)
+        bar_x, bar_y = 70, 32
+        bar_w, bar_h = 80, 14
+        pygame.draw.rect(self.screen, (60, 60, 60), (bar_x, bar_y, bar_w, bar_h))
+        fill_w = int(bar_w * (self.heli.rotor_speed / MAX_ROTOR_SPEED))
+        bar_color = (50, 200, 50) if self.heli.can_fly() else (200, 200, 50)
+        pygame.draw.rect(self.screen, bar_color, (bar_x, bar_y, fill_w, bar_h))
+        pygame.draw.rect(self.screen, TEXT_COLOR, (bar_x, bar_y, bar_w, bar_h), 1)
+        
+        # Percentage text after bar
+        pct_text = f"{rotor_pct}%"
+        pct_surf = self.font.render(pct_text, True, TEXT_COLOR)
+        self.screen.blit(pct_surf, (bar_x + bar_w + 8, 30))
+        
+        # Altitude indicator
+        altitude = int(self.heli.ground_y - self.heli.y)
+        alt_text = f"Altitude: {altitude}px"
+        alt_surf = self.font.render(alt_text, True, TEXT_COLOR)
+        self.screen.blit(alt_surf, (12, 52))
+        
+        # Controls help (always visible)
+        controls = [
+            "W - Ascend",
+            "A - Left",
+            "D - Right", 
+            "S - Land",
+        ]
+        
+        # Draw controls panel
+        panel_x = WIDTH - 140
+        panel_y = 10
+        panel_w = 130
+        panel_h = 95
+        pygame.draw.rect(self.screen, (30, 30, 40), (panel_x - 8, panel_y - 5, panel_w, panel_h), border_radius=6)
+        pygame.draw.rect(self.screen, (100, 100, 120), (panel_x - 8, panel_y - 5, panel_w, panel_h), 2, border_radius=6)
+        
+        title_surf = self.font_large.render("CONTROLS", True, (255, 255, 255))
+        self.screen.blit(title_surf, (panel_x, panel_y))
+        
+        for i, ctrl in enumerate(controls):
+            ctrl_surf = self.font.render(ctrl, True, (220, 220, 220))
+            self.screen.blit(ctrl_surf, (panel_x, panel_y + 22 + i * 17))
 
     def _state_name(self, s):
         return {
-            FlightState.GROUND_IDLE: "GROUND_IDLE",
-            FlightState.SPIN_UP: "SPIN_UP",
-            FlightState.TAKE_OFF: "TAKE_OFF",
-            FlightState.FLY: "FLY",
+            FlightState.IDLE: "IDLE",
+            FlightState.SPINNING_UP: "SPINNING UP",
+            FlightState.FLYING: "FLYING",
             FlightState.LANDING: "LANDING",
-            FlightState.SPIN_DOWN: "SPIN_DOWN",
-            FlightState.DONE: "DONE",
-        }[s]
+            FlightState.SPIN_DOWN: "SPIN DOWN",
+        }.get(s, "UNKNOWN")
 
     def run(self):
         running = True
         while running:
             dt = self.clock.tick(FPS) / 1000.0  # seconds per frame
+            
+            # Event handling (only for quit)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+            
             self.update(dt)
             self.draw()
+        
         pygame.quit()
         return 0
 
