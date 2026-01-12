@@ -1,6 +1,7 @@
 # Graphics Project: Helicopter 2D Animation (Pygame)
 
-![Screen Recording 2026-01-02 210621 (online-video-cutter com)](https://github.com/user-attachments/assets/efdd8d8a-145f-4b41-818a-b870959a2bd8)
+![helimotion](https://github.com/user-attachments/assets/9724208e-a0c0-4739-80d8-f692923d9a8f)
+
 
 A professional 2D helicopter animation game in Python using Pygame with full keyboard controls, realistic physics, and dynamic background scrolling.
 
